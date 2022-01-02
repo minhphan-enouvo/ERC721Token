@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.5.0 <0.8.0;
 
+library Address {
+    function isContract(address account) internal view returns (bool) {
+        return account.code.length > 0;
+    }
+}
+
 interface ERC721 {
     event Transfer(
         address indexed _from,
@@ -54,9 +60,41 @@ interface ERC721 {
         returns (bool);
 }
 
+
+interface ERC721TokenReceiver {
+  function onERC721Received(
+    address _operator,
+    address _from,
+    uint256 _tokenId,
+    bytes calldata _data
+  )  
+  external returns(bytes4);
+}
+
 contract ERC721Token is ERC721 {
+    using Address for address;
     mapping(address => uint256) private ownerToTokenCount;
     mapping(uint256 => address) private idToOwner;
+    bytes internal constant MAGIC_ON_ECR721_RECEIVE = 0x150b7a02;
+    string public name;
+    string public symbol;
+    string public tokenURIBase;
+
+    constructor(string memory _name, string memory _symbol, string memory _tokenURIBase) public {
+        name = _name;
+        symbol = _symbol;
+        tokenURIBase = _tokenURIBase;
+    }
+
+    function _mint(address _owner, uint256 _tokenId ) internal {
+        require(idToOwner[_tokenId] == address(0), "This token already exist");
+        idToOwner[_tokenId] = _owner;
+        ownerToTokenCount[_owner] += 1;
+    }
+
+    function tokenURI(uint256 _tokenId) external view returns (string memory){
+        return string(abi.encodePacked(tokenURIBase, _tokenId));
+    }
 
     function balanceOf(address _owner) external view returns (uint256) {
         return ownerToTokenCount[_owner];
@@ -102,5 +140,27 @@ contract ERC721Token is ERC721 {
         address _to,
         uint256 _tokenId,
         bytes memory data
-    ) internal {}
+    ) internal {
+        require(msg.sender == _from, "Can't auth the trnsfer token");
+        require(_from == idToOwner[_tokenId], "Can't auth the trnsfer token");
+
+        ownerToTokenCount[_from] -= 1;
+        ownerToTokenCount[_to] += 1;
+        idToOwner[_tokenId] = _to;
+        emit(_from, _to, _tokenId);
+
+        if(_to.isContract()){
+            ERC721TokenReceiver(_to).onERC721Received(msg.sender, _from, _tokenId, _data);
+            require(retval = MAGIC_ON_ECR721_RECEIVE, "This is SC, so can't transfer token." );
+        }
+    }
+
+    function onERC721Received(
+    address _operator,
+    address _from,
+    uint256 _tokenId,
+    bytes calldata _data
+  )  external returns(bytes4){
+
+  }
 }
